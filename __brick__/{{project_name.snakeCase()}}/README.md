@@ -64,6 +64,36 @@ env/
   example.json    # Placeholder env values (copy to dev.json / prod.json)
 ```
 
+## Recovery from a partial post-gen state
+
+If the post-gen hook aborts mid-flight (e.g. `flutter pub get` fails with a transient network error), the project may be left half-set-up. Steps to recover, in order, depending on what's missing:
+
+1. If `android/`, `ios/`, etc. don't exist: `flutter create . --org <your-org> --project-name <your-project>`.
+2. If `AndroidManifest.xml` is missing the `flutter_web_auth_2` callback activity: edit `android/app/src/main/AndroidManifest.xml` manually and insert this block before `</application>` (replace `<your-scheme>` with the value used for `auth_redirect_scheme` at generation time):
+
+   ```xml
+   <activity
+       android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+       android:exported="true"
+       android:launchMode="singleTask">
+       <intent-filter android:label="flutter_web_auth_2">
+           <action android:name="android.intent.action.VIEW" />
+
+           <category android:name="android.intent.category.DEFAULT" />
+           <category android:name="android.intent.category.BROWSABLE" />
+
+           <data android:scheme="<your-scheme>" />
+       </intent-filter>
+   </activity>
+   ```
+
+   (Note: re-running `flutter create .` will not undo manual additions.)
+3. If `pubspec.lock` is missing: `flutter pub get`.
+4. If `*.g.dart` / `*.freezed.dart` files are missing: `dart run build_runner build --delete-conflicting-outputs`.
+5. If `.git/` is missing: `git init && git add . && git commit -m "Initial commit"`.
+
+Re-running `mason make based_flutter` over an existing project is **not** safe — `flutter create .` is largely additive but it can overwrite manually-edited platform files. Recover by running the individual steps above instead.
+
 ## Removing the example feature
 
 The `lib/features/example/` directory is scaffolding meant to demonstrate patterns. To remove it:

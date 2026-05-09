@@ -20,6 +20,17 @@ Future<void> run(HookContext context) async {
     exit(1);
   }
 
+  // Mason invokes hooks with CWD set to where `mason make` ran, not the
+  // generated subdirectory. Move into the project so all subsequent commands
+  // and relative file paths (AndroidManifest.xml, build.gradle) resolve
+  // against the correct tree.
+  final projectDir = Directory(projectName);
+  if (!projectDir.existsSync()) {
+    logger.err('Project directory $projectName not found in ${Directory.current.path}; aborting.');
+    exit(1);
+  }
+  Directory.current = projectDir;
+
   // 1. Scaffold platform directories.
   await _runCmd(
     logger,
@@ -34,11 +45,14 @@ Future<void> run(HookContext context) async {
   // 3. Fetch dependencies.
   await _runCmd(logger, 'flutter', ['pub', 'get'], progress: 'Fetching dependencies');
 
-  // 4. Generate code.
+  // 4. Generate code. Use `flutter pub run` (not `dart run`) so this dispatches
+  // through the same Dart SDK that `flutter pub get` just resolved against;
+  // a bare `dart` may resolve to a separate SDK install (FVM, system Dart)
+  // that doesn't see the freshly-fetched packages.
   await _runCmd(
     logger,
-    'dart',
-    ['run', 'build_runner', 'build', '--delete-conflicting-outputs'],
+    'flutter',
+    ['pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs'],
     progress: 'Generating code',
   );
 
@@ -80,55 +94,63 @@ void _patchAndroidManifest(String scheme, Logger logger) {
 
   var content = manifest.readAsStringSync();
 
-  // Add android:launchMode="singleTask" to MainActivity if not already present.
-  // Indentation here matches `flutter create`'s emitted activity block (12 spaces).
-  if (!content.contains('android:launchMode="singleTask"')) {
-    content = content.replaceFirst(
-      'android:name=".MainActivity"',
-      'android:name=".MainActivity"\n            android:launchMode="singleTask"',
-    );
+  // Strip `android:taskAffinity=""` (emitted by `flutter create`'s template).
+  // Empty taskAffinity disrupts the OAuth redirect handoff between MainActivity
+  // and the flutter_web_auth_2 CallbackActivity. Match the whole line including
+  // its leading newline + indentation.
+  content = content.replaceAll(
+    RegExp(r'\n\s*android:taskAffinity=""'),
+    '',
+  );
+
+  // Idempotent: skip the CallbackActivity insertion if it is already declared.
+  if (content.contains('com.linusu.flutter_web_auth_2.CallbackActivity')) {
+    manifest.writeAsStringSync(content);
+    return;
   }
 
-  // Insert intent-filter inside the MainActivity block before its closing tag.
-  // Anchor: the existing main intent-filter for android.intent.action.MAIN.
-  // Insert the new intent-filter immediately after that block.
-  const mainIntentClose = '</intent-filter>';
-  final mainIdx = content.indexOf('android.intent.action.MAIN');
-  if (mainIdx == -1) {
-    logger.err('Could not locate android.intent.action.MAIN block in AndroidManifest.xml; aborting.');
+  // Insert the flutter_web_auth_2 CallbackActivity block before </application>.
+  // MainActivity itself is left untouched — its Flutter-default launchMode
+  // ("singleTop") is correct; the singleTask requirement applies to the
+  // callback activity, not the main one.
+  const closingTag = '</application>';
+  final closingIdx = content.indexOf(closingTag);
+  if (closingIdx == -1) {
+    logger.err('Could not locate </application> in AndroidManifest.xml; aborting.');
     exit(1);
   }
-  final closeIdx = content.indexOf(mainIntentClose, mainIdx);
-  if (closeIdx == -1) {
-    logger.err('Could not locate closing </intent-filter> after MAIN action; aborting.');
-    exit(1);
-  }
 
-  final insertAt = closeIdx + mainIntentClose.length;
-  final intentFilter = '''
-
-            <intent-filter>
+  final activityBlock = '''
+        <activity
+            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter android:label="flutter_web_auth_2">
                 <action android:name="android.intent.action.VIEW" />
+
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="$scheme" />
-            </intent-filter>''';
 
-  // Avoid double-insertion if hook is re-run.
-  if (!content.contains('android:scheme="$scheme"')) {
-    content = content.substring(0, insertAt) + intentFilter + content.substring(insertAt);
-  }
+                <data android:scheme="$scheme" />
+            </intent-filter>
+        </activity>
+
+    ''';
+
+  content = content.substring(0, closingIdx) + activityBlock + content.substring(closingIdx);
 
   manifest.writeAsStringSync(content);
 
-  // Verify the patch landed; replaceFirst silently no-ops if the anchor strings change between Flutter versions.
+  // Verify the patch landed; replaceFirst-style writes silently no-op if the
+  // anchor strings change between Flutter versions.
   final after = manifest.readAsStringSync();
-  if (!after.contains('android:scheme="$scheme"') ||
-      !after.contains('android:launchMode="singleTask"')) {
+  if (!after.contains('com.linusu.flutter_web_auth_2.CallbackActivity') ||
+      !after.contains('android:scheme="$scheme"')) {
     logger.err(
       'AndroidManifest patch did not apply as expected. '
-      'Edit ${manifest.path} manually: add android:launchMode="singleTask" to MainActivity, '
-      'and add an <intent-filter> with <data android:scheme="$scheme" /> inside MainActivity.',
+      'Edit ${manifest.path} manually: insert a CallbackActivity block before </application> '
+      'with android:name="com.linusu.flutter_web_auth_2.CallbackActivity" and '
+      '<data android:scheme="$scheme" /> in the intent-filter.',
     );
     exit(1);
   }
