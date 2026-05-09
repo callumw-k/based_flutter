@@ -1,0 +1,17 @@
+# Dart / Flutter tooling
+.dart_tool/
+.packages
+pubspec.lock
+build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Mason
+.mason/

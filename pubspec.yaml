@@ -1,0 +1,12 @@
+name: based_flutter_tools
+description: Maintainer tooling for the based_flutter Mason brick.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  args: ^2.5.0
+  glob: ^2.1.2
+  path: ^1.9.0

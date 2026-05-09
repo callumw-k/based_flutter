@@ -1,0 +1,8 @@
+{
+  "API_BASE_URL": "https://api.example.com",
+  "LOGTO_ENDPOINT": "https://your-logto-endpoint.com",
+  "LOGTO_APP_ID": "your-logto-app-id",
+  "AUTH_REDIRECT_URI": "{{auth_redirect_scheme}}://callback",
+  "AUTH_POST_SIGN_OUT_URI": "{{auth_redirect_scheme}}://home",
+  "API_RESOURCE": "https://api.example.com"
+}

@@ -1,0 +1,32 @@
+name: based_flutter
+description: An opinionated Flutter starter with Riverpod 3, Drift, Dio, Logto auth, and Talker logging.
+version: 0.1.0
+environment:
+  mason: ">=0.1.0-dev <0.2.0"
+
+vars:
+  project_name:
+    type: string
+    description: Snake-case project name (Dart package name and lib/ directory).
+    default: my_app
+    prompt: Project name?
+  app_name:
+    type: string
+    description: Display name (MaterialApp title, Android android:label, iOS CFBundleDisplayName).
+    default: My App
+    prompt: App display name?
+  description:
+    type: string
+    description: pubspec description.
+    default: A new Flutter project.
+    prompt: Project description?
+  org_name:
+    type: string
+    description: Reverse-domain organisation prefix; composes with project_name for bundle ids.
+    default: com.example
+    prompt: Organisation (reverse-domain)?
+  auth_redirect_scheme:
+    type: string
+    description: URI scheme for the Logto OAuth redirect (must match Logto admin allowlist).
+    default: io.logto
+    prompt: Auth redirect scheme?
