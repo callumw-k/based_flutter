@@ -296,6 +296,8 @@ final dioProvider = Provider<Dio>((ref) {
 
 **Logger verbosity is gated by `kDebugMode`.** In debug builds everything logs (headers, request bodies, response bodies, response messages). In release builds only `printErrorMessage` and `printErrorData` remain on, plus the always-on request URL line. Rationale: error status + error body are diagnostic gold even in production (helps reproduce bugs from user-uploaded logs) and rarely contain auth tokens; everything else can leak. If a real production deployment needs to redact specific fields (e.g. mask Authorization headers in dev too), use `TalkerDioLoggerSettings(requestFilter: ...)` / `responseFilter: ...`.
 
+**Platform config — Android.** `android/app/src/main/AndroidManifest.xml` declares both `INTERNET` and `ACCESS_NETWORK_STATE` at the brick level — Flutter's default `main` manifest ships with neither, so without these any release build silently fails to make network requests. `INTERNET` is required for Dio (and any HTTP). `ACCESS_NETWORK_STATE` is included pre-emptively so a future `connectivity_plus` / offline-detection wire-up doesn't require a manifest edit. The debug manifest also carries `INTERNET` from Flutter's template — redundant once the main manifest declares it (manifests merge), but harmless to leave in place. iOS has no equivalent — App Transport Security covers the access decision at runtime, no Info.plist changes needed for normal HTTPS.
+
 **Pending additions** (added when concretely needed):
 
 - Auth-token interceptor once auth exists.
@@ -498,10 +500,10 @@ The brick will eventually offer multiple auth providers as parallel folders unde
 ```
 lib/core/auth/logto/
   auth_user.dart                 # freezed AuthUser (OIDC claims-derived)
+  auth_state.dart                # sealed AuthState — SignedIn(user) | SignedOut
+  logto_sign_in_exception.dart   # thrown by AuthController.signIn when the SDK returns without authenticating
   auth_repository.dart           # global authRepository, wraps LogtoClient
-  auth_controller.dart           # AsyncNotifier<bool> + provider — durable session
-  sign_in_controller.dart        # AsyncNotifier<void> + provider — operation state
-  current_user_provider.dart     # FutureProvider<AuthUser?> — lazy claims fetch
+  auth_controller.dart           # AsyncNotifier<AuthState> + provider — durable session state and sign-in/out actions
   auth_change_listenable.dart    # ReevaluateListenable bridging Riverpod → auto_route
   auth_guard.dart                # AutoRouteGuard subclass
   auth_token_interceptor.dart    # Dio interceptor (attach + 401 handling)
@@ -512,21 +514,20 @@ lib/core/auth/logto/
 **Architecture (scope: cold-start session resolution + return-to-route + 401 / token-revocation handling):**
 
 - **`AuthRepository` is a top-level global** (`final authRepository = AuthRepository._()`), not behind a Riverpod provider. It's stateless, has no DI dependencies (constructs `LogtoClient` from `Env` constants), and is never overridden in tests. Same precedent as `talker`: stateless infrastructure with no real DI value lives at module top level rather than fronted by a Riverpod provider.
-- **`AuthController extends AsyncNotifier<bool>`** — durable session state, keep-alive. `bool` because the cheap question (am I signed in?) is what guards and gates need; full user data lives in a separate provider.
-- **`SignInController extends AsyncNotifier<void>`** — operation state for the sign-in screen. Auto-dispose. `retry: (_, _) => null` because sign-in is one-shot user-driven; default exponential backoff would silently re-attempt the browser flow on dismissal.
-- **`currentUserProvider` is a `FutureProvider<AuthUser?>`** — fetches OIDC claims only when watched. Invalidated by `AuthController.signOut` and `evict` so user data doesn't go stale.
-- **`AuthChangeListenable`** (subclass of auto_route's `ReevaluateListenable`) bridges `authControllerProvider` to the router. Filters to **confirmed `bool ↔ bool` transitions only** (skips loading edges, errors, the cold-start `null → bool` resolution) — that filter is what keeps the listenable from chattering during normal operation.
-- **`AuthGuard.onNavigation`** awaits `authControllerProvider.future` (with `.catchError((_) => false)` for safety) on the initial nav, decides via `value == true`, and uses `resolver.redirectUntil(SignInRoute(onSuccess: ...))` for the unauthed branch. Cold-start gets a guard-driven decision; later state changes get listenable-driven re-evaluation. Two mechanisms that don't overlap.
+- **`AuthState` is a sealed union** — `SignedIn(AuthUser user) | SignedOut()`. Plain Dart sealed class (no freezed) — equality is hand-rolled on `SignedIn` (delegates to `AuthUser`'s freezed equality) so Riverpod's `==`-based skip works correctly when the same user is re-emitted; `SignedOut` gets equality for free via its `const` constructor. Keeps loading/error (carried by `AsyncValue` itself) cleanly separate from "definitely signed out".
+- **`AuthController extends AsyncNotifier<AuthState>`** — single durable source of truth for the session, keep-alive. Owns `signIn()` and `signOut()` directly, so consumers never have to coordinate two providers. `signIn()` re-checks `authRepository.currentUser()` after the SDK call to defend against the Logto SDK's silent-success failure mode (`signIn` returns normally without actually authenticating); a null result throws `LogtoSignInException`, which the UI renders via `state.hasError`.
+- **`AuthChangeListenable`** (subclass of auto_route's `ReevaluateListenable`) bridges `authControllerProvider` to the router. Filters to **confirmed `SignedIn` ↔ `SignedOut` transitions only** (skips loading edges and errors) — that filter is what keeps the listenable from chattering during normal operation.
+- **`AuthGuard.onNavigation`** awaits `authControllerProvider.future` (with `.catchError((_) => const SignedOut())` for safety) on the initial nav and pattern-matches on the resolved `AuthState` — `SignedIn` calls `resolver.next()`, `SignedOut` calls `resolver.redirectUntil(SignInRoute(onSuccess: ...))`. Cold-start gets a guard-driven decision; later state changes get listenable-driven re-evaluation. Two mechanisms that don't overlap.
 
 **State-vs-routing decision split:**
 
 | Mechanism | Drives |
 |---|---|
 | Guard's `await future` | Initial cold-start nav decision (does the user land on `ExampleListRoute` or `SignInRoute`?). |
-| `AuthChangeListenable` → `reevaluateGuards()` | Sign-out, 401 eviction. Both flip `AuthState` from `true → false`; the listener fires guards on the existing stack and the user is redirected. |
-| `SignInRoute(onSuccess: ...)` callback | Sign-in success. The screen calls `widget.onSuccess?.call(true)`; the resolver completes the original held navigation. No reliance on the listener for this path. |
+| `AuthChangeListenable` → `reevaluateGuards()` | Sign-out, 401 eviction. Both flip auth state from `SignedIn` to `SignedOut`; the listener fires guards on the existing stack and the user is redirected. |
+| `SignInRoute(onSuccess: ...)` callback | Sign-in success. The screen listens to `authControllerProvider` and fires `onSuccess` on the first `SignedIn` value; the resolver completes the original held navigation. No reliance on the listenable for this path. |
 
-**Why this isn't redundant.** Sign-in success (`false → true`) is handled by the explicit callback — `AuthChangeListenable`'s filter passes that transition through to `notifyListeners`, but it's a no-op because the guard would just see `value == true` and approve, which is what the resolver was already doing. Sign-out / eviction (`true → false`) requires the listener because there's no held resolver in those flows — the user is already on a protected route.
+**Why this isn't redundant.** Sign-in success (`SignedOut → SignedIn`) is handled by the explicit callback — `AuthChangeListenable`'s filter passes that transition through to `notifyListeners`, but it's a no-op because the guard would just see `SignedIn` and approve, which is what the resolver was already doing. Sign-out / eviction (`SignedIn → SignedOut`) requires the listener because there's no held resolver in those flows — the user is already on a protected route.
 
 **Token interceptor behaviour.** `AuthTokenInterceptor` attaches the Logto access token on every request (calls `authRepository.backendToken()`). On 401:
 1. Mark the request `_retriedKey: true` so retries can't loop.
@@ -536,7 +537,7 @@ lib/core/auth/logto/
 
 **Sign-out is local-first.** `AuthController.signOut` wraps the SDK call in try/finally — if Logto's hosted sign-out endpoint fails (network, server error), the user is still evicted locally. Remote sign-out failure is logged via talker but doesn't block local cleanup.
 
-**Sign-in screen UX detail.** The screen flips `isSigningIn = true` *before* opening the browser, not after. That way the "in transition" state covers the entire flow (browser open → close → resolver completion → route swap) without a flash of the sign-in button between browser-close and route-change. Reset to `false` only on error.
+**Sign-in screen UX detail.** While `authControllerProvider` is in `AsyncLoading` (browser open → close → resolver completion), the screen renders an empty `SizedBox` instead of the button. That covers the entire sign-in transition without a flash of the sign-in button between browser-close and route-change. On error, `state.hasError` renders the failure line beneath the button.
 
 **Env constants:** `LOGTO_ENDPOINT`, `LOGTO_APP_ID`, `AUTH_REDIRECT_URI` (default `io.logto://callback`), `AUTH_POST_SIGN_OUT_URI` (default `io.logto://home`), `API_RESOURCE` (no default — must be provided per project, registered in Logto admin as the API resource).
 

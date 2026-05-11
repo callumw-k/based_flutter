@@ -39,7 +39,7 @@ Future<void> run(HookContext context) async {
     progress: 'Scaffolding platform directories',
   );
 
-  // 2. Patch AndroidManifest.xml: launchMode + Logto intent-filter.
+  // 2. Patch AndroidManifest.xml: network permissions + Logto intent-filter.
   _patchAndroidManifest(scheme, logger);
 
   // 3. Fetch dependencies.
@@ -103,24 +103,38 @@ void _patchAndroidManifest(String scheme, Logger logger) {
     '',
   );
 
-  // Idempotent: skip the CallbackActivity insertion if it is already declared.
-  if (content.contains('com.linusu.flutter_web_auth_2.CallbackActivity')) {
-    manifest.writeAsStringSync(content);
-    return;
+  // Insert network permissions before <application>. Flutter's default main
+  // manifest declares neither, so release builds silently fail to make HTTP
+  // requests. INTERNET is required for Dio. ACCESS_NETWORK_STATE is included
+  // pre-emptively for future connectivity-aware features (connectivity_plus
+  // etc.) so a manifest edit isn't needed later. Idempotent.
+  if (!content.contains('android.permission.INTERNET')) {
+    const applicationTag = '<application';
+    final appIdx = content.indexOf(applicationTag);
+    if (appIdx == -1) {
+      logger.err('Could not locate <application in AndroidManifest.xml; aborting.');
+      exit(1);
+    }
+    const permissionsBlock = '''<uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    ''';
+    content = content.substring(0, appIdx) + permissionsBlock + content.substring(appIdx);
   }
 
   // Insert the flutter_web_auth_2 CallbackActivity block before </application>.
   // MainActivity itself is left untouched — its Flutter-default launchMode
   // ("singleTop") is correct; the singleTask requirement applies to the
-  // callback activity, not the main one.
-  const closingTag = '</application>';
-  final closingIdx = content.indexOf(closingTag);
-  if (closingIdx == -1) {
-    logger.err('Could not locate </application> in AndroidManifest.xml; aborting.');
-    exit(1);
-  }
+  // callback activity, not the main one. Idempotent.
+  if (!content.contains('com.linusu.flutter_web_auth_2.CallbackActivity')) {
+    const closingTag = '</application>';
+    final closingIdx = content.indexOf(closingTag);
+    if (closingIdx == -1) {
+      logger.err('Could not locate </application> in AndroidManifest.xml; aborting.');
+      exit(1);
+    }
 
-  final activityBlock = '''
+    final activityBlock = '''
         <activity
             android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
             android:exported="true"
@@ -137,20 +151,24 @@ void _patchAndroidManifest(String scheme, Logger logger) {
 
     ''';
 
-  content = content.substring(0, closingIdx) + activityBlock + content.substring(closingIdx);
+    content = content.substring(0, closingIdx) + activityBlock + content.substring(closingIdx);
+  }
 
   manifest.writeAsStringSync(content);
 
-  // Verify the patch landed; replaceFirst-style writes silently no-op if the
+  // Verify the patches landed; substring-style writes silently no-op if the
   // anchor strings change between Flutter versions.
   final after = manifest.readAsStringSync();
-  if (!after.contains('com.linusu.flutter_web_auth_2.CallbackActivity') ||
+  if (!after.contains('android.permission.INTERNET') ||
+      !after.contains('android.permission.ACCESS_NETWORK_STATE') ||
+      !after.contains('com.linusu.flutter_web_auth_2.CallbackActivity') ||
       !after.contains('android:scheme="$scheme"')) {
     logger.err(
       'AndroidManifest patch did not apply as expected. '
-      'Edit ${manifest.path} manually: insert a CallbackActivity block before </application> '
-      'with android:name="com.linusu.flutter_web_auth_2.CallbackActivity" and '
-      '<data android:scheme="$scheme" /> in the intent-filter.',
+      'Edit ${manifest.path} manually: ensure <uses-permission android:name="android.permission.INTERNET" /> '
+      'and <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> are declared before '
+      '<application>, and a CallbackActivity block is inserted before </application> with '
+      'android:name="com.linusu.flutter_web_auth_2.CallbackActivity" and <data android:scheme="$scheme" />.',
     );
     exit(1);
   }

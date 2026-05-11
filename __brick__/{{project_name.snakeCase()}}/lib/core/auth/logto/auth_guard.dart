@@ -1,5 +1,6 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_controller.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_state.dart';
 import 'package:{{project_name.snakeCase()}}/core/router/app_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,12 +11,13 @@ class AuthGuard extends AutoRouteGuard {
 
   @override
   Future<void> onNavigation(NavigationResolver resolver, StackRouter router) async {
-    final signedIn = await _ref.read(authControllerProvider.future).catchError((_) => false);
+    final state = await _ref.read(authControllerProvider.future).catchError((_) => const SignedOut());
 
-    if (signedIn) {
-      resolver.next();
-      return;
+    switch (state) {
+      case SignedIn():
+        resolver.next();
+      case SignedOut():
+        resolver.redirectUntil(SignInRoute(onSuccess: (success) => resolver.next(success)));
     }
-    resolver.redirectUntil(SignInRoute(onSuccess: (success) => resolver.next(success)));
   }
 }

@@ -1,17 +1,31 @@
 import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_repository.dart';
-import 'package:{{project_name.snakeCase()}}/core/auth/logto/current_user_provider.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_state.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/logto_sign_in_exception.dart';
 import 'package:{{project_name.snakeCase()}}/core/logging/talker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-final authControllerProvider = AsyncNotifierProvider<AuthController, bool>(AuthController.new);
+final authControllerProvider = AsyncNotifierProvider<AuthController, AuthState>(AuthController.new);
 
-class AuthController extends AsyncNotifier<bool> {
+class AuthController extends AsyncNotifier<AuthState> {
   @override
-  Future<bool> build() => authRepository.isSignedIn();
+  Future<AuthState> build() async {
+    final user = await authRepository.currentUser();
+    return user == null ? const SignedOut() : SignedIn(user);
+  }
 
-  Future<void> refresh() async {
+  Future<void> signIn() async {
     state = const AsyncLoading();
-    state = await AsyncValue.guard(authRepository.isSignedIn);
+    try {
+      await authRepository.signIn();
+      final user = await authRepository.currentUser();
+      if (user == null) {
+        throw const LogtoSignInException('Logto sign-in returned without authenticating');
+      }
+      state = AsyncData(SignedIn(user));
+    } catch (e, st) {
+      talker.error('[AuthController] sign-in failed', e, st);
+      state = AsyncError(e, st);
+    }
   }
 
   Future<void> signOut() async {
@@ -20,13 +34,9 @@ class AuthController extends AsyncNotifier<bool> {
     } catch (e, st) {
       talker.error('Remote sign-out failed; evicting locally anyway', e, st);
     } finally {
-      state = const AsyncData(false);
-      ref.invalidate(currentUserProvider);
+      state = const AsyncData(SignedOut());
     }
   }
 
-  void evict() {
-    state = const AsyncData(false);
-    ref.invalidate(currentUserProvider);
-  }
+  void evict() => state = const AsyncData(SignedOut());
 }

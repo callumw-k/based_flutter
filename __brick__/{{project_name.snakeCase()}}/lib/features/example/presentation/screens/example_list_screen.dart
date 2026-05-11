@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_controller.dart';
 import 'package:{{project_name.snakeCase()}}/core/logging/talker.dart';
@@ -42,6 +43,12 @@ class ExampleListScreen extends ConsumerWidget {
             tooltip: 'Open log viewer',
             onPressed: () => context.router.push(const LogViewerRoute()),
           ),
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.timer_off),
+              tooltip: 'Simulate session eviction',
+              onPressed: () => ref.read(authControllerProvider.notifier).evict(),
+            ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sign out',

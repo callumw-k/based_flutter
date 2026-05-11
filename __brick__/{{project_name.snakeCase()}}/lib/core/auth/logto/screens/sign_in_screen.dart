@@ -1,50 +1,39 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
-import 'package:{{project_name.snakeCase()}}/core/auth/logto/sign_in_controller.dart';
-import 'package:{{project_name.snakeCase()}}/core/logging/talker.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_controller.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 @RoutePage()
-class SignInScreen extends ConsumerStatefulWidget {
+class SignInScreen extends ConsumerWidget {
   const SignInScreen({super.key, this.onSuccess});
 
   final void Function(bool value)? onSuccess;
 
   @override
-  ConsumerState<SignInScreen> createState() => _SignInScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(authControllerProvider, (prev, next) {
+      if ((prev?.value, next.value) case (SignedOut() || null, SignedIn())) onSuccess?.call(true);
+    });
 
-class _SignInScreenState extends ConsumerState<SignInScreen> {
-  bool isSigningIn = false;
-
-  void signIn() async {
-    setState(() => isSigningIn = true);
-    try {
-      await ref.read(signInControllerProvider.notifier).execute();
-      widget.onSuccess?.call(true);
-    } catch (e, st) {
-      setState(() => isSigningIn = false);
-      talker.error("Couldn't sign in user", e, st);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(signInControllerProvider);
+    final state = ref.watch(authControllerProvider);
 
     return Scaffold(
-      body: !isSigningIn
-          ? Center(
+      body: state.isLoading
+          ? const SizedBox()
+          : Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  FilledButton(onPressed: state.isLoading ? null : signIn, child: const Text('Sign in with Logto')),
-                  if (state.hasError && !state.isLoading)
+                  FilledButton(
+                    onPressed: () => ref.read(authControllerProvider.notifier).signIn(),
+                    child: const Text('Sign in with Logto'),
+                  ),
+                  if (state.hasError)
                     Padding(padding: const EdgeInsets.only(top: 16), child: Text('Sign in failed: ${state.error}')),
                 ],
               ),
-            )
-          : const SizedBox(),
+            ),
     );
   }
 }
