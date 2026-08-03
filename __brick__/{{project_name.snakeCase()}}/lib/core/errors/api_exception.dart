@@ -64,11 +64,16 @@ extension DioExceptionToApi on DioException {
           );
         }
         if (status == 401 || status == 403) {
-          return AuthException(message: 'Unauthorised', statusCode: status, cause: this, stackTrace: stackTrace);
+          return AuthException(
+            message: _extractServerMessage(response?.data) ?? 'Unauthorised',
+            statusCode: status,
+            cause: this,
+            stackTrace: stackTrace,
+          );
         }
         if (status == 422) {
           return ValidationException(
-            message: 'Validation failed',
+            message: _extractServerMessage(response?.data) ?? 'Validation failed',
             statusCode: status,
             fieldErrors: _extractFieldErrors(response?.data),
             cause: this,
@@ -77,20 +82,36 @@ extension DioExceptionToApi on DioException {
         }
         if (status >= 500) {
           return ServerException(
-            message: 'Server error',
+            message: _extractServerMessage(response?.data) ?? 'Server error',
             statusCode: status,
             cause: this,
             stackTrace: stackTrace,
           );
         }
         return UnknownException(
-          message: 'Unexpected response (status $status)',
+          message: _extractServerMessage(response?.data) ?? 'Unexpected response (status $status)',
           statusCode: status,
           cause: this,
           stackTrace: stackTrace,
         );
     }
   }
+}
+
+String? _extractServerMessage(Object? data) {
+  if (data is! Map<String, Object?>) return null;
+  final errors = data['errors'];
+  if (errors is Map<String, Object?>) {
+    final general = errors['generalErrors'];
+    if (general is List && general.isNotEmpty) {
+      return general.map((e) => e.toString()).join(' ');
+    }
+  }
+  final message = data['message'];
+  if (message is String && message.isNotEmpty && message != 'One or more errors occured!') {
+    return message;
+  }
+  return null;
 }
 
 Map<String, List<String>>? _extractFieldErrors(Object? data) {

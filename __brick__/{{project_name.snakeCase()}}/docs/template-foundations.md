@@ -98,9 +98,12 @@ void main() => bootstrap(() => const App());
 
 ```dart
 import 'package:flutter/material.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_change_listenable.dart';
 import 'package:{{project_name.snakeCase()}}/core/router/app_router_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:talker_flutter/talker_flutter.dart';
 
+import 'core/logging/talker.dart';
 import 'core/theme/app_theme.dart';
 
 class App extends ConsumerStatefulWidget {
@@ -111,11 +114,15 @@ class App extends ConsumerStatefulWidget {
 }
 
 class _AppState extends ConsumerState<App> {
-  late final _routerConfig = ref.read(appRouterProvider).config();
+  late final _routerConfig = ref.read(appRouterProvider).config(
+    navigatorObservers: () => [TalkerRouteObserver(talker)],
+    reevaluateListenable: ref.read(authChangeListenableProvider),
+  );
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
+      debugShowCheckedModeBanner: false,
       title: 'App',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
@@ -387,15 +394,24 @@ Drift is opened via `drift_flutter`'s `driftDatabase()` helper, which handles pl
 // lib/core/database/app_database.dart
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:{{project_name.snakeCase()}}/features/example/data/tables/example.dart';
 
 part 'app_database.g.dart';
 
-@DriftDatabase(tables: [])
+@DriftDatabase(tables: [Example])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'app_database'));
 
   @override
   int get schemaVersion => 1;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {},
+    beforeOpen: (details) async {
+      await customStatement('PRAGMA foreign_keys = ON');
+    },
+  );
 }
 ```
 
@@ -415,12 +431,13 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 
 - **Tables are co-located with their feature** (`lib/features/<feature>/data/tables/<table>.dart`) and registered in `AppDatabase`'s `@DriftDatabase(tables: [...])` annotation. No central `tables/` folder under `core/`.
 - **Default to using drift's row types end-to-end** — storage → repository return → presentation watchers. Don't introduce a separate DTO or ViewModel just to "isolate" the storage layer; for same-shape data that's pure ceremony. Reach for a freezed DTO or a ViewModel only when shapes actually diverge between layers: wire format ≠ storage (different field names, nested objects, fields drift doesn't persist), or presentation needs computed/derived fields the row class doesn't have. Wire-only DTOs (used solely in network parsing inside the repository, never returned upward) are fine and don't count as proliferation. (Side note: this template uses hand-written providers, which sidesteps the `riverpod_generator` 4.x bug around drift's `*Data` row types entirely — see "Riverpod providers" above.)
-- **Schema versioning:** `schemaVersion` starts at `1` and increments per breaking schema change. `MigrationStrategy` is scaffolded with explicit `onCreate`, no-op `onUpgrade` (with a comment block describing how to switch to `stepByStep` once a v2 exists), and `beforeOpen` that enables SQLite foreign keys (`PRAGMA foreign_keys = ON`) — drift's #1 correctness tip since SQLite has them off by default.
-- **Migrations workflow** (when v2 ships):
-  1. `dart run drift_dev schema dump lib/core/database/app_database.dart drift_schemas/` — dumps the *current* schema to JSON.
-  2. `dart run drift_dev schema steps drift_schemas/ lib/core/database/schema_versions.dart` — generates typed `Schema1`/`Schema2`/... helpers.
-  3. Replace the no-op `onUpgrade` body with `stepByStep(from1To2: (m, schema) async { ... })(m, from, to)`.
-  4. Optionally use drift's schema verifier in tests to catch migration bugs before release.
+- **Schema versioning:** `schemaVersion` starts at `1` and increments per breaking schema change. `MigrationStrategy` is scaffolded with a no-op `onUpgrade` (with a comment block describing how to switch to `stepByStep` once a v2 exists) and `beforeOpen` that enables SQLite foreign keys (`PRAGMA foreign_keys = ON`) — drift's #1 correctness tip since SQLite has them off by default. Drift's default `onCreate` (which runs `Migrator.createAll`) is fine for fresh installs; override only if seed data is needed at creation time.
+- **Migrations workflow** (when v2 ships): driven by `dart run drift_dev make-migrations`, which reads the `databases:` block in `build.yaml` and, in a single run, dumps the new schema to `drift_schemas/<db>/drift_schema_v<N>.json`, regenerates `lib/core/database/app_database.steps.dart` (the typed `Schema<N>` / `stepByStep` helpers), and scaffolds a migration test at `test/drift/<db>/migration_test.dart` plus its `generated/` snapshots. After bumping `schemaVersion` and running the command:
+  1. **First time crossing v1 only:** widen the constructor to `AppDatabase([QueryExecutor? executor]) : super(executor ?? driftDatabase(name: 'app_database'));` so the generated migration test can pass an in-memory connection.
+  2. Replace the no-op `onUpgrade` with `onUpgrade: stepByStep(from1To2: (m, schema) async { ... })` and import `app_database.steps.dart`. Callbacks must be consecutive — no skipping.
+  3. Verify with `flutter analyze` and `flutter test test/drift/app_database/migration_test.dart` (the generated test uses drift's `SchemaVerifier` under the hood).
+  4. Version-control the `drift_schemas/<db>/*.json` dumps — they're the only record of historical schemas once code moves on.
+  The full cheatsheet (including the rare "make-migrations refuses to overwrite a stale dump" recovery path) lives as a comment block in `lib/core/database/app_database.dart`.
 - **DAOs:** add `@DriftAccessor` per-feature DAOs (in the feature's `data/` folder) when a feature accumulates more than a handful of queries. Avoid central DAOs in `core/`.
 - **Codegen:** changes to tables/database/DAO files require `dart run build_runner build --delete-conflicting-outputs` (or `watch`) to regenerate `.g.dart` files.
 
@@ -428,7 +445,7 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 
 - Web support: when targeting web, run `dart run drift_flutter:setup` (or whatever the current command is) to copy `sqlite3.wasm` and the worker into `web/`.
 - Type converters in `lib/core/database/converters/` — add when first non-primitive column type appears (e.g. `DateTime` JSON, sealed enums).
-- Migration helpers / schema dumps via `dart run drift_dev schema dump` once schema evolves.
+- Migration artefacts (`drift_schemas/<db>/`, `test/drift/<db>/`, `app_database.steps.dart`) — generated by `dart run drift_dev make-migrations` the first time `schemaVersion` is bumped past 1; not in the template until then.
 
 ### Routing — auto_route
 
@@ -438,18 +455,30 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 
 ```dart
 import 'package:auto_route/auto_route.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_guard.dart';
+import 'package:{{project_name.snakeCase()}}/core/auth/logto/screens/sign_in_screen.dart';
+import 'package:{{project_name.snakeCase()}}/core/logging/log_viewer_screen.dart';
 import 'package:{{project_name.snakeCase()}}/features/example/presentation/screens/example_list_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 part 'app_router.gr.dart';
 
 @AutoRouterConfig()
 class AppRouter extends RootStackRouter {
+  AppRouter(this._ref);
+
+  final Ref _ref;
+
+  late final _authGuard = AuthGuard(_ref);
+
   @override
   RouteType get defaultRouteType => const RouteType.adaptive();
 
   @override
   List<AutoRoute> get routes => [
-    AutoRoute(page: ExampleListRoute.page, initial: true),
+    AutoRoute(page: ExampleListRoute.page, initial: true, guards: [_authGuard]),
+    AutoRoute(page: SignInRoute.page),
+    AutoRoute(page: LogViewerRoute.page),
   ];
 }
 ```
@@ -459,10 +488,10 @@ class AppRouter extends RootStackRouter {
 **`lib/core/router/app_router_provider.dart`:**
 
 ```dart
-final appRouterProvider = Provider<AppRouter>((ref) => AppRouter());
+final appRouterProvider = Provider<AppRouter>((ref) => AppRouter(ref));
 ```
 
-Pure Dart router class, hand-written keep-alive `Provider` — same shape as `dioProvider` and `appDatabaseProvider`. No Riverpod imports in `app_router.dart` (class-vs-wiring rule).
+Hand-written keep-alive `Provider` — same shape as `dioProvider` and `appDatabaseProvider`. **Note:** `app_router.dart` currently imports `flutter_riverpod` because `AppRouter` takes a `Ref` to construct its `AuthGuard` — a deliberate exception to the class-vs-wiring rule for now (see open question below).
 
 **Screens are annotated with `@RoutePage()`.** The annotation is what triggers `auto_route_generator` to emit the matching `*Route` class (e.g. `ExampleListRoute`) in `app_router.gr.dart`. Screen file imports `package:auto_route/auto_route.dart`. Run `dart run build_runner build --delete-conflicting-outputs` after adding/renaming an annotated screen.
 
@@ -470,7 +499,10 @@ Pure Dart router class, hand-written keep-alive `Provider` — same shape as `di
 
 ```dart
 class _AppState extends ConsumerState<App> {
-  late final _routerConfig = ref.read(appRouterProvider).config();
+  late final _routerConfig = ref.read(appRouterProvider).config(
+    navigatorObservers: () => [TalkerRouteObserver(talker)],
+    reevaluateListenable: ref.read(authChangeListenableProvider),
+  );
 
   @override
   Widget build(BuildContext context) {
