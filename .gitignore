@@ -2,6 +2,8 @@
 .dart_tool/
 .packages
 pubspec.lock
+# ...but the template's own lock is content, not an artefact.
+!__brick__/**/pubspec.lock
 build/
 
 # IDE

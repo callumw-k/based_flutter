@@ -9,6 +9,7 @@ final _schemeRegex = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*$');
 Future<void> run(HookContext context) async {
   final projectName = context.vars['project_name'] as String;
   final orgName = context.vars['org_name'] as String;
+  final appName = context.vars['app_name'] as String;
   final scheme = context.vars['auth_redirect_scheme'] as String;
   final logger = context.logger;
 
@@ -31,32 +32,44 @@ Future<void> run(HookContext context) async {
   }
   Directory.current = projectDir;
 
-  // 1. Scaffold platform directories.
+  // 1. Pin the Flutter SDK before anything else runs. The brick ships
+  // `.fvmrc`; `fvm install` reads it, downloads the pinned version if it's
+  // absent and links `.fvm/`. Every Flutter invocation below is proxied
+  // through fvm so generation can't silently run against whatever SDK
+  // happens to be on PATH — a newer one produces code that doesn't analyse.
+  await _requireFvm(logger);
+  await _runCmd(logger, 'fvm', ['install'], progress: 'Pinning Flutter SDK');
+
+  // 2. Scaffold platform directories.
   await _runCmd(
     logger,
-    'flutter',
-    ['create', '.', '--org', orgName, '--project-name', projectName],
+    'fvm',
+    ['flutter', 'create', '.', '--org', orgName, '--project-name', projectName],
     progress: 'Scaffolding platform directories',
   );
 
-  // 2. Patch AndroidManifest.xml: network permissions + Logto intent-filter.
-  _patchAndroidManifest(scheme, logger);
+  // 3. Patch AndroidManifest.xml: display name + network permissions + Logto
+  // intent-filter.
+  _patchAndroidManifest(scheme, projectName, appName, logger);
 
-  // 3. Fetch dependencies.
-  await _runCmd(logger, 'flutter', ['pub', 'get'], progress: 'Fetching dependencies');
+  // 4. Patch ios/Runner/Info.plist: display name.
+  _patchIosDisplayName(appName, logger);
 
-  // 4. Generate code. Use `flutter pub run` (not `dart run`) so this dispatches
+  // 5. Fetch dependencies.
+  await _runCmd(logger, 'fvm', ['flutter', 'pub', 'get'], progress: 'Fetching dependencies');
+
+  // 6. Generate code. Use `pub run` (not `dart run`) so this dispatches
   // through the same Dart SDK that `flutter pub get` just resolved against;
-  // a bare `dart` may resolve to a separate SDK install (FVM, system Dart)
-  // that doesn't see the freshly-fetched packages.
+  // a bare `dart` may resolve to a separate SDK install that doesn't see the
+  // freshly-fetched packages.
   await _runCmd(
     logger,
-    'flutter',
-    ['pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs'],
+    'fvm',
+    ['flutter', 'pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs'],
     progress: 'Generating code',
   );
 
-  // 5. Initialise git and make initial commit.
+  // 7. Initialise git and make initial commit.
   await _runCmd(logger, 'git', ['init'], progress: 'Initialising git');
   await _runCmd(logger, 'git', ['add', '.']);
   await _runCmd(
@@ -65,6 +78,23 @@ Future<void> run(HookContext context) async {
     ['commit', '-m', 'Initial commit from based_flutter brick'],
     progress: 'Creating initial commit',
   );
+}
+
+Future<void> _requireFvm(Logger logger) async {
+  try {
+    final result = await Process.run('fvm', ['--version'], runInShell: true);
+    if (result.exitCode == 0) return;
+  } on ProcessException {
+    // Not on PATH at all; same remedy as a non-zero exit.
+  }
+  logger.err(
+    'fvm was not found on PATH. This template pins its Flutter SDK in .fvmrc '
+    'and runs every Flutter command through fvm, so generation cannot '
+    'continue without it. Install fvm '
+    '(https://fvm.app/documentation/getting-started/installation), then '
+    're-run "mason make based_flutter".',
+  );
+  exit(1);
 }
 
 Future<void> _runCmd(
@@ -85,7 +115,12 @@ Future<void> _runCmd(
   p?.complete();
 }
 
-void _patchAndroidManifest(String scheme, Logger logger) {
+void _patchAndroidManifest(
+  String scheme,
+  String projectName,
+  String appName,
+  Logger logger,
+) {
   final manifest = File('android/app/src/main/AndroidManifest.xml');
   if (!manifest.existsSync()) {
     logger.err('AndroidManifest.xml not found at ${manifest.path}; aborting.');
@@ -93,6 +128,15 @@ void _patchAndroidManifest(String scheme, Logger logger) {
   }
 
   var content = manifest.readAsStringSync();
+
+  // `flutter create --project-name` sets android:label to the snake_case
+  // package name; swap in the human-readable display name. Done before the
+  // block insertions below so the CallbackActivity's own android:label can
+  // never be caught by this replacement.
+  content = content.replaceAll(
+    'android:label="$projectName"',
+    'android:label="${_escapeXml(appName)}"',
+  );
 
   // Strip `android:taskAffinity=""` (emitted by `flutter create`'s template).
   // Empty taskAffinity disrupts the OAuth redirect handoff between MainActivity
@@ -159,13 +203,14 @@ void _patchAndroidManifest(String scheme, Logger logger) {
   // Verify the patches landed; substring-style writes silently no-op if the
   // anchor strings change between Flutter versions.
   final after = manifest.readAsStringSync();
-  if (!after.contains('android.permission.INTERNET') ||
+  if (!after.contains('android:label="${_escapeXml(appName)}"') ||
+      !after.contains('android.permission.INTERNET') ||
       !after.contains('android.permission.ACCESS_NETWORK_STATE') ||
       !after.contains('com.linusu.flutter_web_auth_2.CallbackActivity') ||
       !after.contains('android:scheme="$scheme"')) {
     logger.err(
       'AndroidManifest patch did not apply as expected. '
-      'Edit ${manifest.path} manually: ensure <uses-permission android:name="android.permission.INTERNET" /> '
+      'Edit ${manifest.path} manually: set android:label="${_escapeXml(appName)}" on <application>, ensure <uses-permission android:name="android.permission.INTERNET" /> '
       'and <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> are declared before '
       '<application>, and a CallbackActivity block is inserted before </application> with '
       'android:name="com.linusu.flutter_web_auth_2.CallbackActivity" and <data android:scheme="$scheme" />.',
@@ -173,3 +218,47 @@ void _patchAndroidManifest(String scheme, Logger logger) {
     exit(1);
   }
 }
+
+// `flutter create` derives CFBundleDisplayName by title-casing the project
+// name, so there's no predictable literal to match on. Anchor on the key
+// instead and rewrite the <string> that follows it. CFBundleName is left
+// alone: that's the short bundle name, which should stay the package name.
+final _displayNameRegex = RegExp(
+  r'(<key>CFBundleDisplayName</key>\s*<string>)[^<]*(</string>)',
+);
+
+void _patchIosDisplayName(String appName, Logger logger) {
+  final plist = File('ios/Runner/Info.plist');
+  if (!plist.existsSync()) {
+    logger.err('Info.plist not found at ${plist.path}; aborting.');
+    exit(1);
+  }
+
+  final escaped = _escapeXml(appName);
+  final content = plist.readAsStringSync().replaceFirstMapped(
+        _displayNameRegex,
+        (m) => '${m[1]}$escaped${m[2]}',
+      );
+  plist.writeAsStringSync(content);
+
+  // Verify: replaceFirstMapped silently no-ops if the key is absent or the
+  // plist layout changes between Flutter versions.
+  final match = _displayNameRegex.firstMatch(plist.readAsStringSync());
+  if (match == null || !match.group(0)!.contains('<string>$escaped</string>')) {
+    logger.err(
+      'Info.plist patch did not apply as expected. '
+      'Edit ${plist.path} manually: set the <string> under '
+      '<key>CFBundleDisplayName</key> to "$appName".',
+    );
+    exit(1);
+  }
+}
+
+// Escape the five XML predefined entities so display names containing `&`,
+// quotes or angle brackets don't produce a malformed manifest or plist.
+String _escapeXml(String value) => value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
