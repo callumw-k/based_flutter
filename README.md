@@ -66,7 +66,7 @@ mason make based_flutter -c vars.json -o ~/projects
   "app_name": "Acme",
   "description": "Acme's mobile app.",
   "org_name": "dev.calcode",
-  "auth_redirect_scheme": "dev.calcode"
+  "auth_redirect_scheme": ""
 }
 ```
 
@@ -79,18 +79,22 @@ Output lands in `<output-dir>/<project_name>/`, defaulting to the current direct
 | `project_name` | `my_app` | Snake-case Dart package name, `lib/` directory, and import paths. |
 | `app_name` | `My App` | MaterialApp title, Android `android:label`, iOS `CFBundleDisplayName`. |
 | `description` | `A new Flutter project.` | pubspec description. |
-| `org_name` | `com.example` | Reverse-domain prefix, composed with `project_name` for bundle ids. |
-| `auth_redirect_scheme` | `io.logto` | Logto OAuth redirect scheme (Env defaults + AndroidManifest intent-filter). |
+| `org_name` | `dev.calcode` | Reverse-domain prefix, composed with `project_name` for bundle ids. |
+| `auth_redirect_scheme` | derived | Logto OAuth redirect scheme (Env defaults + AndroidManifest intent-filter). |
 
 `org_name` and `project_name` compose into the Android namespace and `applicationId` and the iOS bundle id, so `dev.calcode` plus `acme_app` gives `dev.calcode.acme_app`.
 
-`auth_redirect_scheme` is validated against the Android URI scheme grammar before anything is written. It must start with a letter and contain only letters, digits, `+`, `-` and `.`. Whatever you choose has to match the redirect URIs registered in your Logto admin console.
+`auth_redirect_scheme` defaults to `org_name` plus the param-cased `project_name`, so `dev.calcode` and `recipe_scanner` derive `dev.calcode.recipe-scanner`. Underscores are illegal in a URI scheme, hence the param-casing. Answer the prompt (or set the key in a `-c` config) to override it. Leave the key out of that config entirely and mason falls back to prompting, which breaks a non-interactive run, so pass `""` for the derived value.
+
+The scheme, derived or supplied, is validated against the Android URI scheme grammar before anything is written. It must start with a letter and contain only letters, digits, `+`, `-` and `.`. Whatever you end up with has to match the redirect URIs registered in your Logto admin console.
 
 `app_name` and `description` are free text. Ampersands and quotes in them are escaped correctly for the manifest, the plist and Dart source.
 
-## What the post-gen hook does
+## What the hooks do
 
-`hooks/post_gen.dart` runs seven steps against the generated directory, and aborts on the first failure rather than leaving a half-built project running:
+`hooks/pre_gen.dart` runs first. It derives `auth_redirect_scheme` when the answer was blank and validates the result, so an org or project name that cannot form a URI scheme aborts before a single file is written.
+
+`hooks/post_gen.dart` then runs seven steps against the generated directory, and aborts on the first failure rather than leaving a half-built project running:
 
 1. `fvm install`, which reads the `.fvmrc` the brick ships and links `.fvm/`.
 2. `fvm flutter create .` to scaffold the platform directories, using `--org` and `--project-name`. The shipped `pubspec.lock` is held aside across this step and restored afterwards. `flutter create` runs its own `dart pub get`, which on 3.47.2 re-resolves the SDK-vendored packages (`meta`, `vector_math`, `code_assets` and friends) off the locked versions. Flutter 3.41.9 leaves the lock alone, so this is worth retesting on each SDK bump.
@@ -215,7 +219,7 @@ Platform directories are excluded because `flutter create .` regenerates them. A
 
 **`Could not find brick at <path>`**: a global `mason add -g --path` install caching a directory that has since moved. Re-run `mason add -g based_flutter --path <new path>`.
 
-**`Invalid auth_redirect_scheme`**: the value must start with a letter and contain only letters, digits, `+`, `-` and `.`.
+**`Invalid auth_redirect_scheme`**: the value must start with a letter and contain only letters, digits, `+`, `-` and `.`. If you left the prompt blank, the error names the `org_name` and `project_name` it was derived from.
 
 **`AndroidManifest patch did not apply as expected`** or the same for `Info.plist`: a newer Flutter template moved the anchor strings the hook matches on. The error names the exact edit to make by hand, then fix `hooks/post_gen.dart`.
 

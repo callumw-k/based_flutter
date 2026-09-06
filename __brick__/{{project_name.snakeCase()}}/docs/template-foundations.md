@@ -572,7 +572,7 @@ lib/core/auth/logto/
 
 **Sign-in screen UX detail.** While `authControllerProvider` is in `AsyncLoading` (browser open → close → resolver completion), the screen renders an empty `SizedBox` instead of the button. That covers the entire sign-in transition without a flash of the sign-in button between browser-close and route-change. On error, `state.hasError` renders the failure line beneath the button.
 
-**Env constants:** `LOGTO_ENDPOINT`, `LOGTO_APP_ID`, `AUTH_REDIRECT_URI` (default `io.logto://callback`), `AUTH_POST_SIGN_OUT_URI` (default `io.logto://home`), `API_RESOURCE` (no default — must be provided per project, registered in Logto admin as the API resource).
+**Env constants:** `LOGTO_ENDPOINT`, `LOGTO_APP_ID`, `AUTH_REDIRECT_URI` (default `{{auth_redirect_scheme}}://callback`), `AUTH_POST_SIGN_OUT_URI` (default `{{auth_redirect_scheme}}://home`), `API_RESOURCE` (no default — must be provided per project, registered in Logto admin as the API resource).
 
 **Platform config.** Android requires a `flutter_web_auth_2.CallbackActivity` intent-filter for the redirect scheme (with `android:launchMode="singleTask"` so the redirect lands in the existing app task rather than spawning a sibling), and `minSdk = 18`. iOS requires nothing — `ASWebAuthenticationSession` handles the redirect natively. Logto admin needs the redirect URIs allow-listed and an API resource registered to match `Env.apiResource`.
 

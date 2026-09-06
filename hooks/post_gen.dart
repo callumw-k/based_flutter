@@ -2,24 +2,13 @@ import 'dart:io';
 
 import 'package:mason/mason.dart';
 
-// Android URI scheme grammar: https://developer.android.com/guide/topics/manifest/data-element
-// Starts with a letter, followed by letters, digits, +, -, .
-final _schemeRegex = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*$');
-
 Future<void> run(HookContext context) async {
   final projectName = context.vars['project_name'] as String;
   final orgName = context.vars['org_name'] as String;
   final appName = context.vars['app_name'] as String;
+  // Already validated (and derived, if left blank) in pre_gen.dart.
   final scheme = context.vars['auth_redirect_scheme'] as String;
   final logger = context.logger;
-
-  if (!_schemeRegex.hasMatch(scheme)) {
-    logger.err(
-      'Invalid auth_redirect_scheme: "$scheme". '
-      'Must match Android URI-scheme grammar: starts with a letter, then letters/digits/+/-/.',
-    );
-    exit(1);
-  }
 
   // Mason invokes hooks with CWD set to where `mason make` ran, not the
   // generated subdirectory. Move into the project so all subsequent commands

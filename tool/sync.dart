@@ -113,6 +113,10 @@ final List<_Rule> _rules = [
     const [
       ('package:flutter_reference/', 'package:{{project_name.snakeCase()}}/'),
       ('flutter_reference', '{{project_name.snakeCase()}}'),
+      // Same rewrite as lib/core/env/env.dart above: the doc quotes those
+      // defaults, and the reference hardcodes the brick's old io.logto value.
+      ('io.logto://callback', '{{auth_redirect_scheme}}://callback'),
+      ('io.logto://home', '{{auth_redirect_scheme}}://home'),
     ],
   ),
 ];

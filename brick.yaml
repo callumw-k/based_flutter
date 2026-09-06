@@ -1,6 +1,6 @@
 name: based_flutter
 description: An opinionated Flutter starter with Riverpod 3, Drift, Dio, Logto auth, and Talker logging.
-version: 0.3.1
+version: 0.3.2
 environment:
   mason: ">=0.1.0-dev <0.2.0"
 
@@ -22,11 +22,11 @@ vars:
     prompt: Project description?
   org_name:
     type: string
-    description: Reverse-domain organisation prefix; composes with project_name for bundle ids.
-    default: com.example
-    prompt: Organisation (reverse-domain)?
+    description: Reverse-domain organisation prefix, without the project name. Bundle ids are <org_name>.<project_name>.
+    default: dev.calcode
+    prompt: "Organisation (reverse-domain, without the project name)?"
   auth_redirect_scheme:
     type: string
-    description: URI scheme for the Logto OAuth redirect (must match Logto admin allowlist).
-    default: io.logto
-    prompt: Auth redirect scheme?
+    description: URI scheme for the Logto OAuth redirect (must match Logto admin allowlist). Blank derives it from org_name and project_name.
+    default: ""
+    prompt: "Auth redirect scheme? (blank derives <org_name>.<project-name>)"

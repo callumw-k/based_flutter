@@ -47,6 +47,7 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 
-# Environment files (only example.json is committed)
+# Environment files (only example.json and op:// templates are committed)
 /env/*.json
 !/env/example.json
+!/env/*.tpl.json
