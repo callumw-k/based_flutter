@@ -35,7 +35,7 @@ bricks:
   based_flutter:
     git:
       url: https://github.com/callumw-k/based_flutter
-      # ref: v0.3.1   # optional, omit to track master
+      # ref: <tag>   # optional, omit to track master
 ```
 
 From a local checkout, for working on the brick itself:
