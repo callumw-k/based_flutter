@@ -42,15 +42,15 @@ Future<void> run(HookContext context) async {
 
   // 2. Scaffold platform directories.
   //
-  // ponytail: workaround for an upstream Flutter regression. On 3.47.2
-  // `flutter create .` overwrites pubspec.lock with a JSON document listing
-  // the SDK's own vendored packages, and `--no-pub` does not prevent it
-  // because pub never runs: create writes the file itself. 3.41.9 leaves the
-  // lock alone, so this arrived between those releases. Left unhandled, the
-  // following pub get discards the unparseable file and re-resolves, which
-  // silently drops the generated project off the tested dependency set.
-  // Hold the lock aside and put it back. Delete this once a Flutter release
-  // stops clobbering the file.
+  // ponytail: `flutter create` runs its own resolution as
+  // `dart pub --directory . get --example` (see `create --verbose`), not
+  // `flutter pub get`. On 3.47.2 that moves the SDK-vendored packages off the
+  // lock we ship: meta 1.19.0 to 1.18.3, vector_math, code_assets, hooks,
+  // record_use, objective_c, native_toolchain_c, and it drops process. Step 5
+  // then finds the rewritten lock satisfiable and leaves it, so the project
+  // ends up off the tested dependency set. 3.41.9 leaves the lock alone, so
+  // this arrived between those releases. Hold the lock aside and put it back.
+  // Retest on the next SDK bump and delete this if it is no longer needed.
   final lockFile = File('pubspec.lock');
   final shippedLock = lockFile.existsSync() ? lockFile.readAsStringSync() : null;
   await _runCmd(
