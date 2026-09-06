@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_token_interceptor.dart';
-import 'package:{{project_name.snakeCase()}}/core/env/env.dart';
+{{#auth}}import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_token_interceptor.dart';
+{{/auth}}import 'package:{{project_name.snakeCase()}}/core/env/env.dart';
 import 'package:{{project_name.snakeCase()}}/core/logging/talker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:talker_dio_logger/talker_dio_logger.dart';
@@ -14,8 +14,8 @@ final dioProvider = Provider<Dio>((ref) {
       receiveTimeout: const Duration(seconds: 30),
     ),
   );
-  dio.interceptors.add(AuthTokenInterceptor(ref));
-  dio.interceptors.add(
+{{#auth}}  dio.interceptors.add(AuthTokenInterceptor(ref));
+{{/auth}}  dio.interceptors.add(
     TalkerDioLogger(
       talker: talker,
       settings: const TalkerDioLoggerSettings(

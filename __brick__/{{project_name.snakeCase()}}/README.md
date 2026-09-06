@@ -10,13 +10,13 @@ This project was scaffolded from the based_flutter Mason brick. The architecture
 
 This project pins its Flutter SDK in `.fvmrc`, and every command below goes through [fvm](https://fvm.app) so you build against that exact version. Run `fvm install` after cloning to fetch it.
 
-The post-gen hook has already run `fvm install`, `fvm flutter create .`, applied an AndroidManifest patch for the Logto OAuth redirect, fetched dependencies, run `build_runner`, and made an initial git commit.
+The post-gen hook has already run `fvm install`, `fvm flutter create .`, {{#auth}}applied an AndroidManifest patch for the Logto OAuth redirect, {{/auth}}fetched dependencies, run `build_runner`, and made an initial git commit.
 
 To finish setup:
 
 ### 1. Configure environment
 
-The app expects compile-time env values for the API and Logto credentials. Copy the example and fill in real values:
+The app expects compile-time env values for the API{{#auth}} and Logto credentials{{/auth}}. Copy the example and fill in real values:
 
 ```bash
 cp env/example.json env/dev.json
@@ -26,12 +26,15 @@ $EDITOR env/dev.json
 Required keys:
 
 - `API_BASE_URL` — your backend.
+{{#auth}}
 - `LOGTO_ENDPOINT` — your Logto tenant URL.
 - `LOGTO_APP_ID` — Logto application id.
 - `AUTH_REDIRECT_URI` — must match the scheme in `AndroidManifest.xml` and the Logto admin redirect URI (default: `{{auth_redirect_scheme}}://callback`).
 - `AUTH_POST_SIGN_OUT_URI` — post sign-out target (default: `{{auth_redirect_scheme}}://home`).
 - `API_RESOURCE` — Logto API resource identifier.
+{{/auth}}
 
+{{#auth}}
 ### 2. Configure Logto admin
 
 In your Logto admin console:
@@ -39,6 +42,7 @@ In your Logto admin console:
 - **Native apps → your app → Redirect URIs:** add `{{auth_redirect_scheme}}://callback`.
 - **Native apps → your app → Post sign-out redirect URIs:** add `{{auth_redirect_scheme}}://home`.
 - **API resources:** register a resource with the value you set as `API_RESOURCE` above.
+{{/auth}}
 
 ### 3. Run the app
 
@@ -46,7 +50,7 @@ In your Logto admin console:
 fvm flutter run --dart-define-from-file=env/dev.json
 ```
 
-The first screen is the sign-in screen. After a successful sign-in, you land on the example feature.
+{{#auth}}The first screen is the sign-in screen. After a successful sign-in, you land on the example feature.{{/auth}}{{^auth}}This project was generated without auth, so the example feature is the first screen. See `docs/template-foundations.md` if you want to add sign-in later.{{/auth}}
 
 ## Project layout
 
@@ -54,7 +58,7 @@ See `docs/template-foundations.md` for the full architectural reference. Short v
 
 ```
 lib/
-  core/           # Shared infrastructure (auth, database, env, errors, logging, network, router, theme)
+  core/           # Shared infrastructure ({{#auth}}auth, {{/auth}}database, env, errors, logging, network, router, theme)
   features/
     example/     # Demo feature: drift table + repo + freezed DTO + sync/list notifiers
   bootstrap.dart  # Error handlers + ProviderScope
@@ -72,6 +76,7 @@ If the post-gen hook aborts mid-flight (e.g. `flutter pub get` fails with a tran
 
 1. If `.fvm/` doesn't exist: `fvm install` (reads `.fvmrc`).
 2. If `android/`, `ios/`, etc. don't exist: `fvm flutter create . --org <your-org> --project-name <your-project>`.
+{{#auth}}
 3. If `AndroidManifest.xml` is missing the `flutter_web_auth_2` callback activity: edit `android/app/src/main/AndroidManifest.xml` manually and insert this block before `</application>` (replace `<your-scheme>` with the value used for `auth_redirect_scheme` at generation time):
 
    ```xml
@@ -91,6 +96,7 @@ If the post-gen hook aborts mid-flight (e.g. `flutter pub get` fails with a tran
    ```
 
    (Note: re-running `flutter create .` will not undo manual additions.)
+{{/auth}}
 4. If `pubspec.lock` is missing: `fvm flutter pub get`.
 5. If `*.g.dart` / `*.freezed.dart` files are missing: `fvm dart run build_runner build --delete-conflicting-outputs`.
 6. If `.git/` is missing: `git init && git add . && git commit -m "Initial commit"`.
@@ -101,7 +107,7 @@ Re-running `mason make based_flutter` over an existing project is **not** safe �
 
 The `lib/features/example/` directory is scaffolding meant to demonstrate patterns. To remove it:
 
-1. Add your own authenticated home screen (e.g. `lib/features/home/presentation/screens/home_screen.dart`) annotated with `@RoutePage()`.
+1. Add your own home screen (e.g. `lib/features/home/presentation/screens/home_screen.dart`) annotated with `@RoutePage()`.
 2. Delete `lib/features/example/`.
 3. In `lib/core/database/app_database.dart`, remove `Example` from the `tables` list.
 4. In `lib/core/router/app_router.dart`, replace the `ExampleListRoute` entry with your new home route, e.g. `AutoRoute(page: HomeRoute.page, initial: true, guards: [_authGuard])`. The `SignInRoute(onSuccess: ...)` redirect in `auth_guard.dart` does not need changes — sign-in success automatically resumes navigation to the original target.

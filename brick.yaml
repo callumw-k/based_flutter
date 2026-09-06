@@ -25,6 +25,11 @@ vars:
     description: Reverse-domain organisation prefix, without the project name. Bundle ids are <org_name>.<project_name>.
     default: dev.calcode
     prompt: "Organisation (reverse-domain, without the project name)?"
+  auth:
+    type: boolean
+    description: Include Logto auth, the sign-in screen, the route guard and the token interceptor. Off gives an unauthenticated app.
+    default: true
+    prompt: Include Logto auth?
   auth_redirect_scheme:
     type: string
     description: URI scheme for the Logto OAuth redirect (must match Logto admin allowlist). Blank derives it from org_name and project_name.

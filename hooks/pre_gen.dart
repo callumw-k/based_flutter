@@ -7,6 +7,11 @@ import 'package:mason/mason.dart';
 final _schemeRegex = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*$');
 
 void run(HookContext context) {
+  // Nothing downstream reads the scheme when auth is off: no manifest patch,
+  // no env keys, no sign-in flow. Deriving it would only invent a value that
+  // has to be right for a feature the project does not have.
+  if (!(context.vars['auth'] as bool)) return;
+
   final orgName = context.vars['org_name'] as String;
   final projectName = context.vars['project_name'] as String;
   final supplied = (context.vars['auth_redirect_scheme'] as String).trim();

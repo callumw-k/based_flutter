@@ -196,7 +196,7 @@ Future<void> main(List<String> args) async {
     }
     final transformed = _applySubstitutions(relPath, content);
 
-    final destPath = p.join(brickOut.path, relPath);
+    final destPath = p.join(brickOut.path, _brickPath(relPath));
     final destFile = File(destPath);
     await destFile.parent.create(recursive: true);
     await destFile.writeAsString(transformed);
@@ -250,8 +250,29 @@ String _applySubstitutions(String relPath, String content) {
       out = out.replaceAll(from, to);
     }
   }
-  return out;
+  return _rewriteAuthMarkers(out);
 }
+
+// The reference is a working app, so it cannot carry mustache tags in its
+// Dart or YAML. It marks optional auth blocks with line comments instead and
+// they become mason sections here.
+//
+// The marker's whole line is consumed, newline included, so the tag sits
+// immediately before the content it wraps. Mason does not strip a section tag
+// that sits alone on its line, so leaving the newline would leave a blank line
+// behind in every generated project.
+final _authMarkerStart = RegExp(r'^[ \t]*(?://|#) brick:auth\r?\n', multiLine: true);
+final _authMarkerEnd = RegExp(r'^[ \t]*(?://|#) brick:end\r?\n', multiLine: true);
+
+String _rewriteAuthMarkers(String content) =>
+    content.replaceAll(_authMarkerStart, '{{#auth}}').replaceAll(_authMarkerEnd, '{{/auth}}');
+
+// Everything under lib/core/auth/ ships only when `auth` is true. Mason
+// renders paths as well as file contents, so a conditional segment in the
+// directory name drops the whole subtree.
+String _brickPath(String relPath) => relPath.startsWith('lib/core/auth/')
+    ? relPath.replaceFirst('lib/core/auth/', 'lib/core/{{#auth}}auth{{/auth}}/')
+    : relPath;
 
 class _Stats {
   int copied = 0;

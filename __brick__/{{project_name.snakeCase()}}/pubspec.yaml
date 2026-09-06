@@ -26,9 +26,9 @@ dependencies:
   talker_riverpod_logger: ^5.1.17
   talker_flutter: ^5.1.16
   auto_route: ^11.1.0
-  logto_dart_sdk: ^4.0.0
+{{#auth}}  logto_dart_sdk: ^4.0.0
   flutter_secure_storage: ^10.3.1
-
+{{/auth}}
 dev_dependencies:
   flutter_test:
     sdk: flutter

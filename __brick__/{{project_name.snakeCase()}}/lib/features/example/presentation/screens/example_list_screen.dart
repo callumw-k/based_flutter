@@ -1,8 +1,8 @@
 import 'package:auto_route/auto_route.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_controller.dart';
-import 'package:{{project_name.snakeCase()}}/core/logging/talker.dart';
+{{#auth}}import 'package:flutter/foundation.dart';
+{{/auth}}import 'package:flutter/material.dart';
+{{#auth}}import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_controller.dart';
+{{/auth}}import 'package:{{project_name.snakeCase()}}/core/logging/talker.dart';
 import 'package:{{project_name.snakeCase()}}/core/router/app_router.dart';
 import 'package:{{project_name.snakeCase()}}/features/example/presentation/example_list.dart';
 import 'package:{{project_name.snakeCase()}}/features/example/presentation/example_sync.dart';
@@ -43,7 +43,7 @@ class ExampleListScreen extends ConsumerWidget {
             tooltip: 'Open log viewer',
             onPressed: () => context.router.push(const LogViewerRoute()),
           ),
-          if (kDebugMode)
+{{#auth}}          if (kDebugMode)
             IconButton(
               icon: const Icon(Icons.timer_off),
               tooltip: 'Simulate session eviction',
@@ -56,7 +56,7 @@ class ExampleListScreen extends ConsumerWidget {
               await ref.read(authControllerProvider.notifier).signOut();
             },
           ),
-        ],
+{{/auth}}        ],
       ),
       body: Column(
         children: [

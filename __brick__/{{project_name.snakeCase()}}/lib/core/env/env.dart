@@ -3,7 +3,7 @@ class Env {
 
   static const String apiBaseUrl = String.fromEnvironment('API_BASE_URL');
 
-  static const String logtoEndpoint = String.fromEnvironment('LOGTO_ENDPOINT');
+{{#auth}}  static const String logtoEndpoint = String.fromEnvironment('LOGTO_ENDPOINT');
   static const String logtoAppId = String.fromEnvironment('LOGTO_APP_ID');
   static const String authRedirectUri = String.fromEnvironment(
     'AUTH_REDIRECT_URI',
@@ -14,4 +14,4 @@ class Env {
     defaultValue: '{{auth_redirect_scheme}}://home',
   );
   static const String apiResource = String.fromEnvironment('API_RESOURCE');
-}
+{{/auth}}}

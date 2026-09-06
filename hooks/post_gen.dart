@@ -8,6 +8,7 @@ Future<void> run(HookContext context) async {
   final appName = context.vars['app_name'] as String;
   // Already validated (and derived, if left blank) in pre_gen.dart.
   final scheme = context.vars['auth_redirect_scheme'] as String;
+  final auth = context.vars['auth'] as bool;
   final logger = context.logger;
 
   // Mason invokes hooks with CWD set to where `mason make` ran, not the
@@ -52,7 +53,7 @@ Future<void> run(HookContext context) async {
 
   // 3. Patch AndroidManifest.xml: display name + network permissions + Logto
   // intent-filter.
-  _patchAndroidManifest(scheme, projectName, appName, logger);
+  _patchAndroidManifest(scheme, projectName, appName, auth, logger);
 
   // 4. Patch ios/Runner/Info.plist: display name.
   _patchIosDisplayName(appName, logger);
@@ -132,6 +133,7 @@ void _patchAndroidManifest(
   String scheme,
   String projectName,
   String appName,
+  bool auth,
   Logger logger,
 ) {
   final manifest = File('android/app/src/main/AndroidManifest.xml');
@@ -152,13 +154,17 @@ void _patchAndroidManifest(
   );
 
   // Strip `android:taskAffinity=""` (emitted by `flutter create`'s template).
+  // Auth-only: the empty value only matters because it breaks the redirect
+  // handoff between MainActivity and the callback activity.
   // Empty taskAffinity disrupts the OAuth redirect handoff between MainActivity
   // and the flutter_web_auth_2 CallbackActivity. Match the whole line including
   // its leading newline + indentation.
-  content = content.replaceAll(
-    RegExp(r'\n\s*android:taskAffinity=""'),
-    '',
-  );
+  if (auth) {
+    content = content.replaceAll(
+      RegExp(r'\n\s*android:taskAffinity=""'),
+      '',
+    );
+  }
 
   // Insert network permissions before <application>. Flutter's default main
   // manifest declares neither, so release builds silently fail to make HTTP
@@ -183,7 +189,7 @@ void _patchAndroidManifest(
   // MainActivity itself is left untouched — its Flutter-default launchMode
   // ("singleTop") is correct; the singleTask requirement applies to the
   // callback activity, not the main one. Idempotent.
-  if (!content.contains('com.linusu.flutter_web_auth_2.CallbackActivity')) {
+  if (auth && !content.contains('com.linusu.flutter_web_auth_2.CallbackActivity')) {
     const closingTag = '</application>';
     final closingIdx = content.indexOf(closingTag);
     if (closingIdx == -1) {
@@ -216,11 +222,13 @@ void _patchAndroidManifest(
   // Verify the patches landed; substring-style writes silently no-op if the
   // anchor strings change between Flutter versions.
   final after = manifest.readAsStringSync();
+  final authPatchesLanded = !auth ||
+      (after.contains('com.linusu.flutter_web_auth_2.CallbackActivity') &&
+          after.contains('android:scheme="$scheme"'));
   if (!after.contains('android:label="${_escapeXml(appName)}"') ||
       !after.contains('android.permission.INTERNET') ||
       !after.contains('android.permission.ACCESS_NETWORK_STATE') ||
-      !after.contains('com.linusu.flutter_web_auth_2.CallbackActivity') ||
-      !after.contains('android:scheme="$scheme"')) {
+      !authPatchesLanded) {
     logger.err(
       'AndroidManifest patch did not apply as expected. '
       'Edit ${manifest.path} manually: set android:label="${_escapeXml(appName)}" on <application>, ensure <uses-permission android:name="android.permission.INTERNET" /> '

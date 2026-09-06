@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_change_listenable.dart';
-import 'package:{{project_name.snakeCase()}}/core/router/app_router_provider.dart';
+{{#auth}}import 'package:{{project_name.snakeCase()}}/core/auth/logto/auth_change_listenable.dart';
+{{/auth}}import 'package:{{project_name.snakeCase()}}/core/router/app_router_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
@@ -17,8 +17,8 @@ class App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<App> {
   late final _routerConfig = ref.read(appRouterProvider).config(
     navigatorObservers: () => [TalkerRouteObserver(talker)],
-    reevaluateListenable: ref.read(authChangeListenableProvider),
-  );
+{{#auth}}    reevaluateListenable: ref.read(authChangeListenableProvider),
+{{/auth}}  );
 
   @override
   Widget build(BuildContext context) {

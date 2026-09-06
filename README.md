@@ -80,6 +80,7 @@ Output lands in `<output-dir>/<project_name>/`, defaulting to the current direct
 | `app_name` | `My App` | MaterialApp title, Android `android:label`, iOS `CFBundleDisplayName`. |
 | `description` | `A new Flutter project.` | pubspec description. |
 | `org_name` | `dev.calcode` | Reverse-domain prefix, composed with `project_name` for bundle ids. |
+| `auth` | `true` | Include Logto auth, the sign-in screen, the route guard and the token interceptor. `false` gives an unauthenticated app. |
 | `auth_redirect_scheme` | derived | Logto OAuth redirect scheme (Env defaults + AndroidManifest intent-filter). |
 
 `org_name` and `project_name` compose into the Android namespace and `applicationId` and the iOS bundle id, so `dev.calcode` plus `acme_app` gives `dev.calcode.acme_app`.
@@ -87,6 +88,8 @@ Output lands in `<output-dir>/<project_name>/`, defaulting to the current direct
 `auth_redirect_scheme` defaults to `org_name` plus the param-cased `project_name`, so `dev.calcode` and `recipe_scanner` derive `dev.calcode.recipe-scanner`. Underscores are illegal in a URI scheme, hence the param-casing. Answer the prompt (or set the key in a `-c` config) to override it. Leave the key out of that config entirely and mason falls back to prompting, which breaks a non-interactive run, so pass `""` for the derived value.
 
 The scheme, derived or supplied, is validated against the Android URI scheme grammar before anything is written. It must start with a letter and contain only letters, digits, `+`, `-` and `.`. Whatever you end up with has to match the redirect URIs registered in your Logto admin console.
+
+Answering `auth` with `false` drops `lib/core/auth/`, the guard and sign-in route, the Dio token interceptor, the `logto_dart_sdk` and `flutter_secure_storage` dependencies, the Logto env keys, and the AndroidManifest callback activity. `auth_redirect_scheme` is then ignored, so leave it blank.
 
 `app_name` and `description` are free text. Ampersands and quotes in them are escaped correctly for the manifest, the plist and Dart source.
 
@@ -150,6 +153,24 @@ The script never auto-commits. Review the diff in this repo, then commit manuall
 
 Free-text variables use the triple-mustache form (`{{{app_name}}}`) in templates and in the sync substitution rules. Mason HTML-escapes `{{var}}`, so an ampersand in a display name would otherwise reach generated Dart source as `&amp;`. Identifier-shaped variables like `project_name` do not need it.
 
+## Optional auth: the marker convention
+
+`flutter_reference` has to stay a runnable app, so it cannot carry mustache tags in its Dart or YAML. It marks the optional auth lines with comments instead, and `sync.dart` turns them into mason sections:
+
+```dart
+// brick:auth
+dio.interceptors.add(AuthTokenInterceptor(ref));
+// brick:end
+```
+
+becomes `{{#auth}}…{{/auth}}` in the brick. `#` comments work the same way for `pubspec.yaml`. The marker line is consumed whole, newline included, because mason leaves a blank line behind wherever a section tag sits alone on its own line.
+
+Markers are line-based, so anything conditional needs its own line. That is why `guards: [_authGuard]` and the `ref` argument in `app_router_provider.dart` are split across lines rather than written inline.
+
+Whole files need no markers. `sync.dart` rewrites `lib/core/auth/` to `lib/core/{{#auth}}auth{{/auth}}/`, and mason renders paths as well as file contents, so a false `auth` drops the directory.
+
+Removing a line from the auth set means checking what it was the last user of. Dropping the guard also stranded `Ref`, `flutter_riverpod` and `flutter/foundation` imports in `app_router.dart`, each of which then failed analysis in the lite variant only.
+
 ## Upgrading Flutter and dependencies
 
 Both live in `flutter_reference/` and propagate through sync. Do them in one pass so you test one combination:
@@ -186,7 +207,14 @@ mason get && mason make based_flutter -c vars.json --on-conflict overwrite
 cd <project_name> && fvm flutter analyze && fvm flutter test
 ```
 
-Both should come back clean. Use an `app_name` containing an ampersand to exercise the XML escaping.
+Generate **both** variants, since a conditional block that breaks one leaves the other clean:
+
+```bash
+mason make based_flutter -c with-auth.json --on-conflict overwrite
+mason make based_flutter -c no-auth.json --on-conflict overwrite
+```
+
+Both should analyse and test clean. Use an `app_name` containing an ampersand to exercise the XML escaping.
 
 To confirm sync is idempotent, copy the brick to a scratch directory, run `tool/sync.dart` there, and diff it against the working tree. Any difference means something in `__brick__/` is hand-edited but not in the exclusion list, and the next sync will silently revert it.
 
