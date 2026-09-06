@@ -40,10 +40,17 @@ Future<void> run(HookContext context) async {
   await _requireFvm(logger);
   await _runCmd(logger, 'fvm', ['install'], progress: 'Pinning Flutter SDK');
 
-  // 2. Scaffold platform directories. `flutter create .` rewrites pubspec.lock,
-  // re-resolving the SDK-adjacent packages (meta, vector_math, code_assets and
-  // friends) below what the shipped lock pins. `--no-pub` does not prevent it,
-  // so hold the lock aside and restore it. Step 5 then resolves against it.
+  // 2. Scaffold platform directories.
+  //
+  // ponytail: workaround for an upstream Flutter regression. On 3.47.2
+  // `flutter create .` overwrites pubspec.lock with a JSON document listing
+  // the SDK's own vendored packages, and `--no-pub` does not prevent it
+  // because pub never runs: create writes the file itself. 3.41.9 leaves the
+  // lock alone, so this arrived between those releases. Left unhandled, the
+  // following pub get discards the unparseable file and re-resolves, which
+  // silently drops the generated project off the tested dependency set.
+  // Hold the lock aside and put it back. Delete this once a Flutter release
+  // stops clobbering the file.
   final lockFile = File('pubspec.lock');
   final shippedLock = lockFile.existsSync() ? lockFile.readAsStringSync() : null;
   await _runCmd(

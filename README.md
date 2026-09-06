@@ -93,7 +93,7 @@ Output lands in `<output-dir>/<project_name>/`, defaulting to the current direct
 `hooks/post_gen.dart` runs seven steps against the generated directory, and aborts on the first failure rather than leaving a half-built project running:
 
 1. `fvm install`, which reads the `.fvmrc` the brick ships and links `.fvm/`.
-2. `fvm flutter create .` to scaffold the platform directories, using `--org` and `--project-name`. The shipped `pubspec.lock` is held aside across this step, because `flutter create` rewrites it even with `--no-pub`.
+2. `fvm flutter create .` to scaffold the platform directories, using `--org` and `--project-name`. The shipped `pubspec.lock` is held aside across this step and restored afterwards: Flutter 3.47.2's `create` overwrites that file with a JSON listing of the SDK's own vendored packages, which `--no-pub` does not prevent. Flutter 3.41.9 leaves it alone, so this is an upstream regression and the workaround can go when a release fixes it.
 3. Patch `AndroidManifest.xml`: set `android:label`, strip the empty `android:taskAffinity` that breaks the OAuth handoff, add the INTERNET and ACCESS_NETWORK_STATE permissions, and insert the `flutter_web_auth_2` callback activity carrying your redirect scheme.
 4. Patch `ios/Runner/Info.plist` to set `CFBundleDisplayName`. `CFBundleName` keeps the package name.
 5. `fvm flutter pub get`.
