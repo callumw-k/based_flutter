@@ -23,10 +23,10 @@ From git, pinned to a tag:
 ```bash
 mason add -g based_flutter \
   --git-url https://github.com/callumw-k/based_flutter \
-  --git-ref v0.2.0
+  --git-ref v0.3.0
 ```
 
-Use `v0.2.0` or later. The `v0.1.0` tag predates the SDK and lockfile pinning, and projects generated from it fail `flutter analyze`.
+Pin to the [latest tag](https://github.com/callumw-k/based_flutter/tags). Each one carries a specific Flutter SDK version and a locked dependency set, so the ref you pin decides what your project is built against. Avoid `v0.1.0`, which predates the SDK and lockfile pinning and generates projects that fail `flutter analyze`.
 
 Per-project instead of globally, add a `mason.yaml` and run `mason get`:
 
@@ -35,7 +35,7 @@ bricks:
   based_flutter:
     git:
       url: https://github.com/callumw-k/based_flutter
-      ref: v0.2.0
+      ref: v0.3.0
 ```
 
 From a local checkout, for working on the brick itself:
