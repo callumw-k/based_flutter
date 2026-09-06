@@ -18,15 +18,15 @@ You do not need a matching Flutter SDK on your PATH. `fvm install` reads the `.f
 
 ## Install
 
-From git, pinned to a tag:
+From git:
 
 ```bash
-mason add -g based_flutter \
-  --git-url https://github.com/callumw-k/based_flutter \
-  --git-ref v0.3.1
+mason add -g based_flutter --git-url https://github.com/callumw-k/based_flutter
 ```
 
-Pin to the [latest tag](https://github.com/callumw-k/based_flutter/tags). Each one carries a specific Flutter SDK version and a locked dependency set, so the ref you pin decides what your project is built against. Avoid `v0.1.0`, which predates the SDK and lockfile pinning and generates projects that fail `flutter analyze`.
+That tracks `master`. Mason resolves it to a commit when you run `mason add`, then caches it, so `mason make` keeps using that commit until you re-run `mason add` to pick up later changes. Every commit on `master` ships a pinned Flutter SDK and a locked dependency set, so tracking the branch still gets you a tested combination rather than a moving target.
+
+Add `--git-ref <tag>` when you want a specific one, to reproduce an older project or to hold a team on one version. Avoid `v0.1.0` and `v0.2.0`, which predate the SDK and lockfile pinning and generate projects that fail `flutter analyze`.
 
 Per-project instead of globally, add a `mason.yaml` and run `mason get`:
 
@@ -35,7 +35,7 @@ bricks:
   based_flutter:
     git:
       url: https://github.com/callumw-k/based_flutter
-      ref: v0.3.1
+      # ref: v0.3.1   # optional, omit to track master
 ```
 
 From a local checkout, for working on the brick itself:
