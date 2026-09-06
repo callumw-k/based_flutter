@@ -1,6 +1,6 @@
 name: based_flutter
 description: An opinionated Flutter starter with Riverpod 3, Drift, Dio, Logto auth, and Talker logging.
-version: 0.1.0
+version: 0.2.0
 environment:
   mason: ">=0.1.0-dev <0.2.0"
 
