@@ -23,7 +23,7 @@ From git, pinned to a tag:
 ```bash
 mason add -g based_flutter \
   --git-url https://github.com/callumw-k/based_flutter \
-  --git-ref v0.3.0
+  --git-ref v0.3.1
 ```
 
 Pin to the [latest tag](https://github.com/callumw-k/based_flutter/tags). Each one carries a specific Flutter SDK version and a locked dependency set, so the ref you pin decides what your project is built against. Avoid `v0.1.0`, which predates the SDK and lockfile pinning and generates projects that fail `flutter analyze`.
@@ -35,7 +35,7 @@ bricks:
   based_flutter:
     git:
       url: https://github.com/callumw-k/based_flutter
-      ref: v0.3.0
+      ref: v0.3.1
 ```
 
 From a local checkout, for working on the brick itself:
@@ -92,7 +92,7 @@ Output lands in `<output-dir>/<project_name>/`, defaulting to the current direct
 
 `hooks/post_gen.dart` runs seven steps against the generated directory, and aborts on the first failure rather than leaving a half-built project running:
 
-1. `fvm install`, which reads the `.fvmrc` the brick ships and links `.fvm/`.
+1. `fvm install --skip-pub-get`, which reads the `.fvmrc` the brick ships and links `.fvm/`. Its own dependency resolution is skipped because it can rewrite the shipped `pubspec.lock`.
 2. `fvm flutter create .` to scaffold the platform directories, using `--org` and `--project-name`.
 3. Patch `AndroidManifest.xml`: set `android:label`, strip the empty `android:taskAffinity` that breaks the OAuth handoff, add the INTERNET and ACCESS_NETWORK_STATE permissions, and insert the `flutter_web_auth_2` callback activity carrying your redirect scheme.
 4. Patch `ios/Runner/Info.plist` to set `CFBundleDisplayName`. `CFBundleName` keeps the package name.

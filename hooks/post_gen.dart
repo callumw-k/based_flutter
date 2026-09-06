@@ -38,15 +38,30 @@ Future<void> run(HookContext context) async {
   // through fvm so generation can't silently run against whatever SDK
   // happens to be on PATH — a newer one produces code that doesn't analyse.
   await _requireFvm(logger);
-  await _runCmd(logger, 'fvm', ['install'], progress: 'Pinning Flutter SDK');
+  // --skip-pub-get: fvm resolves dependencies itself after switching SDK, and
+  // that resolution can rewrite the pubspec.lock the brick ships (offline, it
+  // settles for whatever is already in the local pub cache). Step 5 does the
+  // pub get explicitly, against the shipped lock.
+  await _runCmd(
+    logger,
+    'fvm',
+    ['install', '--skip-pub-get'],
+    progress: 'Pinning Flutter SDK',
+  );
 
-  // 2. Scaffold platform directories.
+  // 2. Scaffold platform directories. `flutter create .` runs a pub get of its
+  // own that re-resolves the SDK-adjacent packages (meta, vector_math,
+  // code_assets and friends) below what the shipped lock pins, so hold the
+  // lock aside and restore it afterwards. Step 5 then resolves against it.
+  final lockFile = File('pubspec.lock');
+  final shippedLock = lockFile.existsSync() ? lockFile.readAsStringSync() : null;
   await _runCmd(
     logger,
     'fvm',
     ['flutter', 'create', '.', '--org', orgName, '--project-name', projectName],
     progress: 'Scaffolding platform directories',
   );
+  if (shippedLock != null) lockFile.writeAsStringSync(shippedLock);
 
   // 3. Patch AndroidManifest.xml: display name + network permissions + Logto
   // intent-filter.
@@ -57,6 +72,17 @@ Future<void> run(HookContext context) async {
 
   // 5. Fetch dependencies.
   await _runCmd(logger, 'fvm', ['flutter', 'pub', 'get'], progress: 'Fetching dependencies');
+
+  // Warn rather than abort: a platform this template has not been generated on
+  // may legitimately need a different resolution, but silent drift from the
+  // tested set is what makes a template rot.
+  if (shippedLock != null && lockFile.readAsStringSync() != shippedLock) {
+    logger.warn(
+      'pubspec.lock changed during generation, so this project is not on the '
+      'exact dependency set the template was tested against. Run '
+      '"fvm flutter analyze" before relying on it.',
+    );
+  }
 
   // 6. Generate code. Use `pub run` (not `dart run`) so this dispatches
   // through the same Dart SDK that `flutter pub get` just resolved against;
