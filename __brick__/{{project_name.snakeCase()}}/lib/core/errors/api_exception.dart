@@ -94,6 +94,9 @@ extension DioExceptionToApi on DioException {
           cause: this,
           stackTrace: stackTrace,
         );
+      case DioExceptionType.transformTimeout:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 }

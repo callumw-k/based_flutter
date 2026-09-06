@@ -1,4 +1,5 @@
 import 'package:flex_seed_scheme/flex_seed_scheme.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class AppTheme {
@@ -20,10 +21,7 @@ class AppTheme {
       tertiaryKey: _tertiary,
       tones: FlexTones.vivid(brightness),
     );
-    return ThemeData(
-      colorScheme: scheme,
-      pageTransitionsTheme: _pageTransitionsTheme,
-    );
+    return ThemeData(colorScheme: scheme, pageTransitionsTheme: _pageTransitionsTheme);
   }
 
   static const PageTransitionsTheme _pageTransitionsTheme = PageTransitionsTheme(

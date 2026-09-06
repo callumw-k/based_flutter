@@ -10,7 +10,7 @@ class ResilientLogtoStorage implements LogtoStorageStrategy {
   const ResilientLogtoStorage();
 
   static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true, resetOnError: true),
+    aOptions: AndroidOptions(resetOnError: true),
   );
 
   @override

@@ -180,10 +180,13 @@ Keep the default for providers where transparent retry makes sense (e.g. a polli
 
 `flex_seed_scheme` generates the `ColorScheme`; `ThemeData` is otherwise vanilla. Both light and dark are wired, with `ThemeMode.system` selecting between them.
 
+**Pinned to 4.x.** Version 5 targets the `material_ui` package that Flutter 3.47 split out of the SDK, so `SeedColorScheme.fromSeeds` returns `material_ui`'s `ColorScheme` rather than the one in `package:flutter/material.dart`. The two classes don't assign to each other. Adopting v5 means moving the whole app to `package:material_ui`, and both `talker_flutter` and `auto_route` still import `package:flutter/material.dart`, so we'd have to wrap them in `MaterialUiCompatibilityBridge`, which ships with a deprecation annotation on the class itself. Revisit when those two packages migrate.
+
 **Current `lib/core/theme/app_theme.dart`:**
 
 ```dart
 import 'package:flex_seed_scheme/flex_seed_scheme.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class AppTheme {
@@ -194,6 +197,7 @@ class AppTheme {
   static const Color _tertiary = Color(0xFF7D5260);
 
   static ThemeData light() => _build(Brightness.light);
+
   static ThemeData dark() => _build(Brightness.dark);
 
   static ThemeData _build(Brightness brightness) {
@@ -204,10 +208,7 @@ class AppTheme {
       tertiaryKey: _tertiary,
       tones: FlexTones.vivid(brightness),
     );
-    return ThemeData(
-      colorScheme: scheme,
-      pageTransitionsTheme: _pageTransitionsTheme,
-    );
+    return ThemeData(colorScheme: scheme, pageTransitionsTheme: _pageTransitionsTheme);
   }
 
   static const PageTransitionsTheme _pageTransitionsTheme = PageTransitionsTheme(
